@@ -24,9 +24,9 @@ class Instance(validate: Boolean) : KLoggable {
             VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT
     val PORTABILITY_EXTENSION: String = "VK_KHR_portability_enumeration"
 
-    private val vkInstance: VkInstance
+    val vkInstance: VkInstance
     private val debugUtils: VkDebugUtilsMessengerCreateInfoEXT
-    private val vkDebugHandle: Long
+    private val vkDebugUtilsMessengerHandle: Long
 
     init {
         MemoryStack.stackPush().use { stack ->
@@ -112,7 +112,7 @@ class Instance(validate: Boolean) : KLoggable {
             val vkCreateDebugUtilsMessengerEXTResult =
                 vkCreateDebugUtilsMessengerEXT(vkInstance, debugUtils, null, longBuff)
             vkCheckResult(vkCreateDebugUtilsMessengerEXTResult, "Error while creating debug utils")
-            vkDebugHandle = longBuff[0]
+            vkDebugUtilsMessengerHandle = longBuff[0]
         }
     }
 
@@ -194,6 +194,8 @@ class Instance(validate: Boolean) : KLoggable {
     }
 
     fun destroy() {
+        vkDestroyDebugUtilsMessengerEXT(vkInstance, vkDebugUtilsMessengerHandle, null);
+
         vkDestroyInstance(vkInstance, null)
     }
 }

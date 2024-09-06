@@ -1,9 +1,14 @@
 package dev.ktxvulkan.graphics
 
+import dev.ktxvulkan.graphics.utils.vkCheckResult
+import dev.ktxvulkan.graphics.vk.Instance
 import org.lwjgl.glfw.GLFW.*
+import org.lwjgl.glfw.GLFWVulkan.glfwCreateWindowSurface
+import org.lwjgl.vulkan.KHRSurface.vkDestroySurfaceKHR
 
 class Window(val width: Int = 1600, val height: Int = 900) {
-    private val handle: Long
+    val handle: Long
+    var surface: Long = 0; private set
 
     init {
         glfwInit()
@@ -24,7 +29,17 @@ class Window(val width: Int = 1600, val height: Int = 900) {
         glfwSwapInterval(0)
     }
 
-    fun destroy() {
+    fun createSurface(instance: Instance) {
+        surface = LongArray(1).let {
+            val glfwCreateWindowSurfaceResult = glfwCreateWindowSurface(instance.vkInstance, handle, null, it)
+            vkCheckResult(glfwCreateWindowSurfaceResult, "failed to create window surface")
+            it[0]
+        }
+    }
+
+    fun destroy(instance: Instance) {
+        vkDestroySurfaceKHR(instance.vkInstance, surface, null)
+
         glfwDestroyWindow(handle)
     }
 }
