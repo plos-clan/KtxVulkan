@@ -16,9 +16,10 @@ import org.lwjgl.vulkan.VkSwapchainCreateInfoKHR
 class Swapchain(val device: Device, val window: Window) : KLoggable {
     override val logger = logger()
     val vkSwapchain: Long
-    val swapchainImages: List<Long>
+    val swapchainImages: List<Image>
     val swapchainImageFormat: Int
     val swapchainExtent: VkExtent2D
+    val renderPass: RenderPass
 
     init {
         val swapchainSupport = device.physicalDevice.swapchainSupport
@@ -82,9 +83,24 @@ class Swapchain(val device: Device, val window: Window) : KLoggable {
             vkGetSwapchainImagesKHR(device.vkDevice, vkSwapchain, intBuffer, null)
             val swapchainImages = stack.mallocLong(intBuffer[0])
             vkGetSwapchainImagesKHR(device.vkDevice, vkSwapchain, intBuffer, swapchainImages)
-            this.swapchainImages = buildList { for (i in 0..<intBuffer[0]) add(swapchainImages[i]) }
             swapchainImageFormat = surfaceFormat.format()
             swapchainExtent = extent
+            this.swapchainImages = buildList {
+                for (i in 0..<intBuffer[0])
+                    add(Image(device, swapchainImages[i], swapchainImageFormat, swapchainExtent))
+            }
+        }
+
+        renderPass = RenderPass(device, this)
+    }
+
+    fun createSwapchainImageViews() {
+        swapchainImages.forEachIndexed { index, image ->
+            image.createImageView(
+                VK_IMAGE_ASPECT_COLOR_BIT,
+                1
+            )
+            logger.info("successfully created swapchain image view {}", index)
         }
     }
 
@@ -139,6 +155,8 @@ class Swapchain(val device: Device, val window: Window) : KLoggable {
     }
 
     fun destroy() {
+        renderPass.destroy()
+        swapchainImages.forEach { it.destroy(destroyImage = false) }
         vkDestroySwapchainKHR(device.vkDevice, vkSwapchain, null)
         vkDestroySurfaceKHR(device.physicalDevice.instance.vkInstance, window.surface, null)
     }

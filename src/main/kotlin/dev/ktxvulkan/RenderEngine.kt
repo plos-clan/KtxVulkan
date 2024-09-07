@@ -25,6 +25,7 @@ object RenderEngine : KLoggable {
         physicalDevice = PhysicalDevice(instance, window)
         device = Device(physicalDevice)
         swapchain = Swapchain(device, window)
+        swapchain.createSwapchainImageViews()
     }
 
     fun run() {

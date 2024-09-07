@@ -23,7 +23,7 @@ class PhysicalDevice(val instance: Instance, private val window: Window) : KLogg
     private val vkPhysicalDeviceProperties: VkPhysicalDeviceProperties
     private val vkPhysicalDeviceMemoryProperties: VkPhysicalDeviceMemoryProperties
     val vkQueueFamilyProperties: VkQueueFamilyProperties.Buffer
-    private val msaaSamples: Int
+    val msaaSamples: Int
 
     init {
         MemoryStack.stackPush().use { stack ->
