@@ -24,6 +24,7 @@ class Instance(validate: Boolean) : KLoggable {
             VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT
     val PORTABILITY_EXTENSION: String = "VK_KHR_portability_enumeration"
 
+    val validationLayers: List<String>
     val vkInstance: VkInstance
     private val debugUtils: VkDebugUtilsMessengerCreateInfoEXT
     private val vkDebugUtilsMessengerHandle: Long
@@ -39,7 +40,7 @@ class Instance(validate: Boolean) : KLoggable {
                 .engineVersion(0)
                 .apiVersion(VK_API_VERSION_1_3)
 
-            val validationLayers = getSupportedValidationLayers()
+            validationLayers = getSupportedValidationLayers()
             val numValidationLayers = validationLayers.size
             var supportsValidation = validate
             if (validate && numValidationLayers == 0) {

@@ -37,9 +37,8 @@ class Window(val width: Int = 1600, val height: Int = 900) {
         }
     }
 
-    fun destroy(instance: Instance) {
-        vkDestroySurfaceKHR(instance.vkInstance, surface, null)
-
+    fun destroy() {
         glfwDestroyWindow(handle)
+        glfwTerminate()
     }
 }

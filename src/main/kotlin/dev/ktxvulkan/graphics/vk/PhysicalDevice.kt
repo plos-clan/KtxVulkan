@@ -15,11 +15,14 @@ import org.lwjgl.vulkan.KHRSwapchain.VK_KHR_SWAPCHAIN_EXTENSION_NAME
 import org.lwjgl.vulkan.VK10.*
 
 
-class PhysicalDevice(instance: Instance, private val window: Window) : KLoggable {
+class PhysicalDevice(val instance: Instance, private val window: Window) : KLoggable {
     override val logger = logger()
-    private val vkPhysicalDevice: VkPhysicalDevice
+    val swapchainSupport: SwapchainSupportDetails
+    val queueFamilyIndices: QueueFamilyIndices
+    val vkPhysicalDevice: VkPhysicalDevice
     private val vkPhysicalDeviceProperties: VkPhysicalDeviceProperties
     private val vkPhysicalDeviceMemoryProperties: VkPhysicalDeviceMemoryProperties
+    val vkQueueFamilyProperties: VkQueueFamilyProperties.Buffer
     private val msaaSamples: Int
 
     init {
@@ -50,12 +53,20 @@ class PhysicalDevice(instance: Instance, private val window: Window) : KLoggable
             if (score > 0) vkPhysicalDevice = maxSuitablePhysicalDevice
             else throw RuntimeException("failed to find a suitable GPU!")
 
+            swapchainSupport = querySwapChainSupport(vkPhysicalDevice)
+            queueFamilyIndices = findQueueFamilies(vkPhysicalDevice)
+
             vkPhysicalDeviceProperties = VkPhysicalDeviceProperties.calloc()
             vkGetPhysicalDeviceProperties(vkPhysicalDevice, vkPhysicalDeviceProperties)
             logger.debug("{} was chosen", vkPhysicalDeviceProperties.deviceNameString())
 
             vkPhysicalDeviceMemoryProperties = VkPhysicalDeviceMemoryProperties.calloc()
             vkGetPhysicalDeviceMemoryProperties(vkPhysicalDevice, vkPhysicalDeviceMemoryProperties)
+
+            val queueFamilyPropertiesCount = IntArray(1)
+            vkGetPhysicalDeviceQueueFamilyProperties(vkPhysicalDevice, queueFamilyPropertiesCount, null)
+            vkQueueFamilyProperties = VkQueueFamilyProperties.calloc(queueFamilyPropertiesCount[0])
+            vkGetPhysicalDeviceQueueFamilyProperties(vkPhysicalDevice, queueFamilyPropertiesCount, vkQueueFamilyProperties)
 
             msaaSamples = getMaxUsableMSAASamples()
         }
@@ -160,7 +171,7 @@ class PhysicalDevice(instance: Instance, private val window: Window) : KLoggable
                 deviceFeatures.geometryShader() && deviceFeatures.samplerAnisotropy() && extensionsSupported && swapChainAdequate
     }
 
-    private fun querySwapChainSupport(device: VkPhysicalDevice): SwapChainSupportDetails {
+    private fun querySwapChainSupport(device: VkPhysicalDevice): SwapchainSupportDetails {
         val capabilities = VkSurfaceCapabilitiesKHR.calloc()
         vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, window.surface, capabilities)
 
@@ -191,42 +202,46 @@ class PhysicalDevice(instance: Instance, private val window: Window) : KLoggable
             }
         } else emptyList()
 
-        return SwapChainSupportDetails(capabilities, formats, presentModes)
+        return SwapchainSupportDetails(capabilities, formats, presentModes)
     }
 
     private fun findQueueFamilies(device: VkPhysicalDevice): QueueFamilyIndices {
         val indices = QueueFamilyIndices()
-        val intBuf = IntArray(1)
-        val queueFamilyCount = intBuf.let {
-            vkGetPhysicalDeviceQueueFamilyProperties(device, it, null)
-            it[0]
-        }
-        logger.trace("\t Device has {} queue families", queueFamilyCount)
-        val vkQueueFamilyPropertiesBuf = VkQueueFamilyProperties.calloc(queueFamilyCount)
-        vkGetPhysicalDeviceQueueFamilyProperties(device, intBuf, vkQueueFamilyPropertiesBuf)
-        val vkQueueFamilyProperties = buildList {
-            for (i in 0..<queueFamilyCount) add(vkQueueFamilyPropertiesBuf[i])
-        }
-        var i = 0
-        for (queueFamily in vkQueueFamilyProperties) {
-            if (queueFamily.queueFlags() and VK_QUEUE_GRAPHICS_BIT != 0) indices.graphicsFamily = i
-
-            val presentSupport = IntArray(1).let {
-                vkGetPhysicalDeviceSurfaceSupportKHR(device, i, window.surface, it)
-                it[0] != 0
+        MemoryStack.stackPush().use { stack ->
+            val intBuf = IntArray(1)
+            val queueFamilyCount = intBuf.let {
+                vkGetPhysicalDeviceQueueFamilyProperties(device, it, null)
+                it[0]
             }
-            if (presentSupport) {
-                indices.presentFamily = i
+            logger.trace("\t Device has {} queue families", queueFamilyCount)
+            val vkQueueFamilyPropertiesBuf = VkQueueFamilyProperties.calloc(queueFamilyCount, stack)
+            vkGetPhysicalDeviceQueueFamilyProperties(device, intBuf, vkQueueFamilyPropertiesBuf)
+            val vkQueueFamilyProperties = buildList {
+                for (i in 0..<queueFamilyCount) add(vkQueueFamilyPropertiesBuf[i])
             }
-            if (indices.isComplete()) break
+            var i = 0
+            for (queueFamily in vkQueueFamilyProperties) {
+                if (queueFamily.queueFlags() and VK_QUEUE_GRAPHICS_BIT != 0
+                    && indices.graphicsFamily == -1) indices.graphicsFamily = i
 
-            i++
+                val presentSupport = IntArray(1).let {
+                    vkGetPhysicalDeviceSurfaceSupportKHR(device, i, window.surface, it)
+                    it[0] != 0
+                }
+                if (presentSupport && i != indices.graphicsFamily) {
+                    indices.presentFamily = i
+                }
+                if (indices.isComplete()) break
+
+                i++
+            }
         }
+
         
         return indices
     }
 
-    data class SwapChainSupportDetails(
+    data class SwapchainSupportDetails(
         val capabilities: VkSurfaceCapabilitiesKHR,
         val formats: List<VkSurfaceFormatKHR>,
         val presentModes: List<Int>
