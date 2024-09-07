@@ -2,17 +2,11 @@ package dev.ktxvulkan.graphics.vk
 
 import dev.ktxvulkan.graphics.utils.vkCheckResult
 import io.github.oshai.kotlinlogging.KLoggable
-import io.github.oshai.kotlinlogging.KLogger
 import org.lwjgl.system.MemoryStack
+import org.lwjgl.vulkan.*
 import org.lwjgl.vulkan.VK10.VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO
 import org.lwjgl.vulkan.VK12.*
 import org.lwjgl.vulkan.VK13.VK_API_VERSION_1_3
-import org.lwjgl.vulkan.VkDevice
-import org.lwjgl.vulkan.VkDeviceCreateInfo
-import org.lwjgl.vulkan.VkDeviceQueueCreateInfo
-import org.lwjgl.vulkan.VkPhysicalDeviceFeatures2
-import org.lwjgl.vulkan.VkPhysicalDeviceVulkan12Features
-import org.lwjgl.vulkan.VkQueue
 
 class Device(val physicalDevice: PhysicalDevice) : KLoggable {
     override val logger = logger()

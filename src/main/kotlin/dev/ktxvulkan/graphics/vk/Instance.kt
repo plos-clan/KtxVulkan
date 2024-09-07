@@ -10,6 +10,8 @@ import org.lwjgl.system.MemoryStack
 import org.lwjgl.system.MemoryUtil
 import org.lwjgl.vulkan.*
 import org.lwjgl.vulkan.EXTDebugUtils.*
+import org.lwjgl.vulkan.KHRPortabilityEnumeration.VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR
+import org.lwjgl.vulkan.KHRPortabilitySubset.VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME
 import org.lwjgl.vulkan.VK10.VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO
 import org.lwjgl.vulkan.VK10.vkCreateInstance
 import org.lwjgl.vulkan.VK13.*
@@ -49,7 +51,6 @@ class Instance(validate: Boolean) : KLoggable {
             }
             logger.debug("Validation: {}", supportsValidation)
 
-
             // Set required  layers
             val requiredLayers = stack.mallocPointer(numValidationLayers)
             if (supportsValidation) {
@@ -67,7 +68,7 @@ class Instance(validate: Boolean) : KLoggable {
 
             val requiredExtensions: PointerBuffer
 
-            val usePortability = instanceExtensions.contains(PORTABILITY_EXTENSION) && getOS() == OSType.MACOS
+            val usePortability = PORTABILITY_EXTENSION in instanceExtensions && getOS() == OSType.MACOS
             if (supportsValidation) {
                 val vkDebugUtilsExtension = stack.UTF8(VK_EXT_DEBUG_UTILS_EXTENSION_NAME)
                 val numExtensions =
@@ -82,15 +83,14 @@ class Instance(validate: Boolean) : KLoggable {
                 requiredExtensions = stack.mallocPointer(numExtensions)
                 requiredExtensions.put(glfwExtensions)
                 if (usePortability) {
-                    requiredExtensions.put(stack.UTF8(KHRPortabilitySubset.VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME))
+                    requiredExtensions.put(stack.UTF8(VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME))
                 }
             }
             requiredExtensions.flip()
 
-            var extension = MemoryUtil.NULL
-            if (supportsValidation) {
+            val extension = if (supportsValidation) {
                 debugUtils = createDebugCallBack()
-                extension = debugUtils.address()
+                debugUtils.address()
             } else throw IllegalStateException("Does not support validation")
 
             // Create instance info
@@ -101,7 +101,7 @@ class Instance(validate: Boolean) : KLoggable {
                 .ppEnabledLayerNames(requiredLayers)
                 .ppEnabledExtensionNames(requiredExtensions)
             if (usePortability) {
-                vkInstanceCreateInfo.flags(0x00000001) // VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR
+                vkInstanceCreateInfo.flags(VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR)
             }
 
             val pInstance = stack.mallocPointer(1)
@@ -172,13 +172,13 @@ class Instance(validate: Boolean) : KLoggable {
             val layersToUse = mutableListOf<String>()
 
             // Main validation layer
-            if (supportedLayers.contains("VK_LAYER_KHRONOS_validation")) {
+            if ("VK_LAYER_KHRONOS_validation" in supportedLayers) {
                 layersToUse.add("VK_LAYER_KHRONOS_validation")
                 return layersToUse
             }
 
             // Fallback 1
-            if (supportedLayers.contains("VK_LAYER_LUNARG_standard_validation")) {
+            if ("VK_LAYER_LUNARG_standard_validation" in supportedLayers) {
                 layersToUse.add("VK_LAYER_LUNARG_standard_validation")
                 return layersToUse
             }
