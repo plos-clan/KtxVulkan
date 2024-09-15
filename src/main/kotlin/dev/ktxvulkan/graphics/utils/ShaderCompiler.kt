@@ -16,7 +16,7 @@ class ShaderCompiler {
     ): CompilationResult {
         checkAvailability()
         MemoryStack.stackPush().use { stack ->
-            val sourceBuffer = stack.ASCII(source)
+            val sourceBuffer = stack.ASCII(source, false) // fuck you
             val fileNameBuffer = stack.ASCII(fileName)
             val entryPointBuffer = stack.ASCII(entryPoint)
             val result = Shaderc.shaderc_compile_into_spv(

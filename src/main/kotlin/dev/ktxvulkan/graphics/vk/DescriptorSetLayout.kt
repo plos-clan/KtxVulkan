@@ -1,14 +1,23 @@
 package dev.ktxvulkan.graphics.vk
 
 import dev.ktxvulkan.graphics.utils.vkCheckResult
-import org.lwjgl.PointerBuffer
 import org.lwjgl.system.MemoryStack
 import org.lwjgl.vulkan.VK10.*
 import org.lwjgl.vulkan.VkDescriptorSetLayoutBinding
 import org.lwjgl.vulkan.VkDescriptorSetLayoutCreateInfo
-import java.nio.LongBuffer
 
 class DescriptorSetLayout(val device: Device, val bindings: List<DescriptorSetLayoutBinding>, val vkDescriptorSetLayout: Long) {
+    fun destroy() {
+        vkDestroyDescriptorSetLayout(device.vkDevice, vkDescriptorSetLayout, null)
+    }
+
+    companion object {
+        fun build(device: Device, builder: Builder.() -> Unit): DescriptorSetLayout {
+            val build = Builder()
+            build.builder()
+            return build.build(device)
+        }
+    }
 
     class Builder {
         private val bindings = mutableListOf<DescriptorSetLayoutBinding>()
@@ -18,8 +27,7 @@ class DescriptorSetLayout(val device: Device, val bindings: List<DescriptorSetLa
                 DescriptorSetLayoutBinding(
                     VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
                     count,
-                    stageFlags,
-                    0
+                    stageFlags
                 )
             )
             return this
@@ -30,8 +38,7 @@ class DescriptorSetLayout(val device: Device, val bindings: List<DescriptorSetLa
                 DescriptorSetLayoutBinding(
                     VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
                     count,
-                    stageFlags,
-                    0
+                    stageFlags
                 )
             )
             return this
@@ -41,11 +48,11 @@ class DescriptorSetLayout(val device: Device, val bindings: List<DescriptorSetLa
             type: Int,
             count: Int,
             stageFlags: Int,
-            pImmutableSamplers: Long = 0
+            immutableSamplers: List<Long> = emptyList()
         ): Builder {
             bindings.add(
                 DescriptorSetLayoutBinding(
-                    type, count, stageFlags, pImmutableSamplers
+                    type, count, stageFlags, immutableSamplers
                 )
             )
             return this
@@ -57,13 +64,19 @@ class DescriptorSetLayout(val device: Device, val bindings: List<DescriptorSetLa
                 val bindingsBuffer = VkDescriptorSetLayoutBinding.calloc(bindings.size, stack)
 
                 bindings.forEachIndexed { index, descriptorSetLayoutBinding ->
-                    val longBuffer = stack.callocLong(1).put(0, descriptorSetLayoutBinding.pImmutableSamplers)
                     val vkDescriptorSetLayoutBinding = VkDescriptorSetLayoutBinding.calloc(stack)
                         .descriptorType(descriptorSetLayoutBinding.type)
                         .descriptorCount(descriptorSetLayoutBinding.count)
                         .stageFlags(descriptorSetLayoutBinding.stageFlags)
-                        .pImmutableSamplers(longBuffer)
                         .binding(index)
+
+                    if (descriptorSetLayoutBinding.immutableSamplers.isNotEmpty()) {
+                        val samplers = descriptorSetLayoutBinding.immutableSamplers
+                        val pImmutableSamplers = stack.callocLong(samplers.size)
+                        samplers.forEachIndexed { index, l -> pImmutableSamplers.put(index, l) }
+                        vkDescriptorSetLayoutBinding.pImmutableSamplers(pImmutableSamplers)
+                    }
+
                     bindingsBuffer.put(index, vkDescriptorSetLayoutBinding)
                 }
 
@@ -88,6 +101,6 @@ class DescriptorSetLayout(val device: Device, val bindings: List<DescriptorSetLa
         val type: Int,
         val count: Int,
         val stageFlags: Int,
-        val pImmutableSamplers: Long = 0
+        val immutableSamplers: List<Long> = emptyList()
     )
 }

@@ -8,7 +8,6 @@ import org.lwjgl.vulkan.*
 import org.lwjgl.vulkan.KHRSwapchain.VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
 import org.lwjgl.vulkan.VK10.*
 
-
 class RenderPass(val device: Device, swapchain: Swapchain) : KLoggable {
     override val logger = logger()
     val vkRenderPass: Long

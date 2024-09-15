@@ -8,11 +8,10 @@ import io.github.oshai.kotlinlogging.KLogger
 import org.lwjgl.system.MemoryStack
 import org.lwjgl.util.shaderc.Shaderc
 import org.lwjgl.util.shaderc.Shaderc.shaderc_compilation_status_success
-import org.lwjgl.vulkan.VK10.VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO
-import org.lwjgl.vulkan.VK10.vkCreateShaderModule
+import org.lwjgl.vulkan.VK10.*
 import org.lwjgl.vulkan.VkShaderModuleCreateInfo
 
-class ShaderModule(val device: Device, val name: String, val binary: ByteArray, val kind: Int) : KLoggable {
+class ShaderModule(val device: Device, val name: String, val binary: ByteArray, val kind: Int, val entryName: String) : KLoggable {
     override val logger = logger()
     val vkShaderModule: Long
 
@@ -20,6 +19,7 @@ class ShaderModule(val device: Device, val name: String, val binary: ByteArray, 
         MemoryStack.stackPush().use { stack ->
             val byteBuffer = stack.calloc(binary.size)
             byteBuffer.put(binary)
+            byteBuffer.flip()
             val vkShaderModuleCreateInfo = VkShaderModuleCreateInfo.calloc(stack)
                 .sType(VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO)
                 .pCode(byteBuffer)
@@ -32,34 +32,40 @@ class ShaderModule(val device: Device, val name: String, val binary: ByteArray, 
         }
     }
 
+    fun destroy() {
+        vkDestroyShaderModule(device.vkDevice, vkShaderModule, null)
+    }
+
     companion object : KLoggable {
         override val logger = logger()
 
         fun compile(device: Device, name: String, kind: Int): ShaderModule {
-            val source = ResourceHelper.getResourceStream("shader/$name")!!.use {
+            val source = ResourceHelper.getResourceStream(name)!!.use {
                 it.readBytes()
             }.decodeToString()
 
             val compiler = ShaderCompiler()
             val result = compiler.compileGlslToSpv(source, kind, name)
             if (result.compilationStatus != shaderc_compilation_status_success) {
-                logger.error("Failed to compiler shader ($name),${result.numErrors} error(s) occurred: ${result.errorMessage}")
+                logger.error("Failed to compile shader ($name, $kind), " +
+                        "${result.numErrors} error(s) occurred: \n${result.errorMessage}")
+                throw IllegalStateException()
             }
 
             val remaining = result.binary!!.remaining()
             val binary = ByteArray(remaining)
             result.binary!!.get(binary)
-            return ShaderModule(device, name, binary, kind)
+            return ShaderModule(device, name, binary, kind, "main")
         }
 
         fun cached(device: Device, name: String, kind: Int): ShaderModule {
-            val binary = ResourceHelper.getResourceStream("shader/$name.spv")?.use {
+            val binary = ResourceHelper.getResourceStream("$name.spv")?.use {
                 it.readBytes()
             }
             return if (binary == null) {
                 compile(device, name, kind)
             } else {
-                ShaderModule(device, name, binary, kind)
+                ShaderModule(device, name, binary, kind, "main")
             }
         }
     }
