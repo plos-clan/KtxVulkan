@@ -1,8 +1,20 @@
 import org.gradle.internal.os.OperatingSystem
 
 plugins {
-	kotlin("jvm") version "2.0.0"
+	kotlin("jvm") version "2.0.20"
+
+	id("com.google.devtools.ksp")
+	id("dev.luna5ama.kmogus-struct-plugin") apply false
+
 	application
+}
+
+allprojects {
+	repositories {
+		mavenCentral()
+		maven("https://maven.luna5ama.dev/")
+		maven("https://jitpack.io/")
+	}
 }
 
 val lwjglVersion = "3.3.4"
@@ -42,6 +54,9 @@ dependencies {
 	implementation("org.apache.logging.log4j:log4j-api:2.23.1")
 	implementation("org.apache.logging.log4j:log4j-core:2.23.1")
 	implementation("org.apache.logging.log4j:log4j-slf4j-impl:2.23.1")
+	implementation("net.java.dev.jna:jna:5.14.0")
+	implementation("dev.luna5ama:kmogus-struct-api:1.0-SNAPSHOT")
+	implementation(project(":structs"))
 
 	implementation(platform("org.lwjgl:lwjgl-bom:$lwjglVersion"))
 
@@ -53,6 +68,7 @@ dependencies {
 	implementation("org.lwjgl", "lwjgl-openal")
 	implementation("org.lwjgl", "lwjgl-stb")
 	implementation("org.lwjgl", "lwjgl-vma")
+	implementation("org.lwjgl", "lwjgl-shaderc")
 	implementation("org.lwjgl", "lwjgl-vulkan")
 	runtimeOnly("org.lwjgl", "lwjgl", classifier = lwjglNatives)
 	runtimeOnly("org.lwjgl", "lwjgl-assimp", classifier = lwjglNatives)
@@ -62,9 +78,16 @@ dependencies {
 	runtimeOnly("org.lwjgl", "lwjgl-openal", classifier = lwjglNatives)
 	runtimeOnly("org.lwjgl", "lwjgl-stb", classifier = lwjglNatives)
 	runtimeOnly("org.lwjgl", "lwjgl-vma", classifier = lwjglNatives)
+	runtimeOnly("org.lwjgl", "lwjgl-shaderc", classifier = lwjglNatives)
 	if (lwjglNatives == "natives-macos" || lwjglNatives == "natives-macos-arm64") runtimeOnly("org.lwjgl", "lwjgl-vulkan", classifier = lwjglNatives)
 }
 
 application {
 	mainClass = "dev.ktxvulkan.Application"
+}
+
+kotlin {
+	compilerOptions {
+		freeCompilerArgs = listOf("-Xcontext-receivers")
+	}
 }
