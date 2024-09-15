@@ -7,7 +7,7 @@ pluginManagement {
     }
 
     plugins {
-        id("com.google.devtools.ksp") version "2.0.20-1.0.24"
+        id("com.google.devtools.ksp") version "2.0.10-1.0.24"
         id("dev.luna5ama.kmogus-struct-plugin") version "1.0-SNAPSHOT"
     }
 }

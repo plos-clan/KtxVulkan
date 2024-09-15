@@ -10,6 +10,7 @@ import org.lwjgl.util.shaderc.Shaderc
 import org.lwjgl.util.shaderc.Shaderc.shaderc_compilation_status_success
 import org.lwjgl.vulkan.VK10.*
 import org.lwjgl.vulkan.VkShaderModuleCreateInfo
+import kotlin.system.measureNanoTime
 
 class ShaderModule(val device: Device, val name: String, val binary: ByteArray, val kind: Int, val entryName: String) : KLoggable {
     override val logger = logger()
@@ -44,17 +45,23 @@ class ShaderModule(val device: Device, val name: String, val binary: ByteArray, 
                 it.readBytes()
             }.decodeToString()
 
-            val compiler = ShaderCompiler()
-            val result = compiler.compileGlslToSpv(source, kind, name)
-            if (result.compilationStatus != shaderc_compilation_status_success) {
-                logger.error("Failed to compile shader ($name, $kind), " +
-                        "${result.numErrors} error(s) occurred: \n${result.errorMessage}")
-                throw IllegalStateException()
-            }
+            val binary: ByteArray
 
-            val remaining = result.binary!!.remaining()
-            val binary = ByteArray(remaining)
-            result.binary!!.get(binary)
+            val timeUsed = measureNanoTime {
+                val compiler = ShaderCompiler()
+                val result = compiler.compileGlslToSpv(source, kind, name)
+                if (result.compilationStatus != shaderc_compilation_status_success) {
+                    logger.error("Failed to compile shader ($name, $kind), " +
+                            "${result.numErrors} error(s) occurred: \n${result.errorMessage}")
+                    throw IllegalStateException()
+                }
+
+                val remaining = result.binary!!.remaining()
+                binary = ByteArray(remaining)
+                result.binary!!.get(binary)
+            }
+            logger.info("Successfully compiled shader $name in ${timeUsed}ns.")
+
             return ShaderModule(device, name, binary, kind, "main")
         }
 

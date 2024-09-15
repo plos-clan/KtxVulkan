@@ -1,7 +1,7 @@
 import org.gradle.internal.os.OperatingSystem
 
 plugins {
-	kotlin("jvm") version "2.0.20"
+	kotlin("jvm") version "2.0.10"
 
 	id("com.google.devtools.ksp")
 	id("dev.luna5ama.kmogus-struct-plugin") apply false

@@ -5,13 +5,11 @@ import dev.ktxvulkan.graphics.utils.vkCheckResult
 import io.github.oshai.kotlinlogging.KLoggable
 import org.lwjgl.glfw.GLFW.glfwGetFramebufferSize
 import org.lwjgl.system.MemoryStack
+import org.lwjgl.vulkan.*
 import org.lwjgl.vulkan.KHRSurface.*
 import org.lwjgl.vulkan.KHRSwapchain.*
 import org.lwjgl.vulkan.VK10.*
-import org.lwjgl.vulkan.VkExtent2D
-import org.lwjgl.vulkan.VkSurfaceCapabilitiesKHR
-import org.lwjgl.vulkan.VkSurfaceFormatKHR
-import org.lwjgl.vulkan.VkSwapchainCreateInfoKHR
+
 
 class Swapchain(val device: Device, val window: Window) : KLoggable {
     override val logger = logger()
@@ -20,6 +18,9 @@ class Swapchain(val device: Device, val window: Window) : KLoggable {
     val swapchainImageFormat: Int
     val swapchainExtent: VkExtent2D
     val renderPass: RenderPass
+    val framebuffers: List<Framebuffer>
+    val colorImage: Image
+    val depthImage: Image
 
     init {
         val swapchainSupport = device.physicalDevice.swapchainSupport
@@ -86,12 +87,71 @@ class Swapchain(val device: Device, val window: Window) : KLoggable {
             swapchainImageFormat = surfaceFormat.format()
             swapchainExtent = extent
             this.swapchainImages = buildList {
-                for (i in 0..<intBuffer[0])
+                for (i in 0..<intBuffer[0]) {
                     add(Image(device, swapchainImages[i], swapchainImageFormat, swapchainExtent))
+                }
             }
         }
 
         renderPass = RenderPass(device, this)
+
+        createSwapchainImageViews()
+
+        colorImage = Image.create(device, extent.width(), extent.height(), 1,
+            device.physicalDevice.msaaSamples, swapchainImageFormat,
+            VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT or VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
+        )
+        colorImage.createImageView(VK_IMAGE_ASPECT_COLOR_BIT, 1)
+
+        val depthFormat = findDepthFormat()
+        depthImage = Image.create(device, extent.width(), extent.height(), 1,
+            device.physicalDevice.msaaSamples, depthFormat,
+            VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
+        )
+        depthImage.createImageView(VK_IMAGE_ASPECT_DEPTH_BIT, 1)
+//        transitionImageLayout(depthImage, depthFormat, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, 1)
+
+        framebuffers = createFramebuffers()
+    }
+
+    private fun transitionImageLayout(image: Image, format: Int, oldLayout: Int, newLayout: Int, mipLevels: Int) {
+
+    }
+
+    private fun findSupportedFormat(candidates: List<Int>, tiling: Int, features: Int): Int {
+        MemoryStack.stackPush().use { stack ->
+            for (format in candidates) {
+                val props = VkFormatProperties.calloc(stack)
+                vkGetPhysicalDeviceFormatProperties(device.physicalDevice.vkPhysicalDevice, format, props)
+
+                if (tiling == VK_IMAGE_TILING_LINEAR && (props.linearTilingFeatures() and features) == features) {
+                    return format
+                } else if (tiling == VK_IMAGE_TILING_OPTIMAL && (props.optimalTilingFeatures() and features) == features) {
+                    return format
+                }
+            }
+        }
+
+        throw IllegalStateException("failed to find supported format!")
+    }
+
+    private fun findDepthFormat(): Int {
+        return findSupportedFormat(
+            listOf(VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT),
+            VK_IMAGE_TILING_OPTIMAL,
+            VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT
+        )
+    }
+
+    private fun createFramebuffers(): List<Framebuffer> {
+        return buildList {
+            swapchainImages.forEach { image ->
+                val attachments = listOf(colorImage.imageView, depthImage.imageView, image.imageView)
+                add(Framebuffer(device, attachments, renderPass, swapchainExtent))
+            }
+        }
     }
 
     fun createSwapchainImageViews() {
@@ -155,6 +215,9 @@ class Swapchain(val device: Device, val window: Window) : KLoggable {
     }
 
     fun destroy() {
+        framebuffers.forEach { it.destroy() }
+        colorImage.destroy()
+        depthImage.destroy()
         renderPass.destroy()
         swapchainImages.forEach { it.destroy(destroyImage = false) }
         vkDestroySwapchainKHR(device.vkDevice, vkSwapchain, null)

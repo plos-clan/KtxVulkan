@@ -17,7 +17,7 @@ class GraphicsPipeline(
     val pipelineStates: PipelineStates,
     val descriptorSetLayouts: List<DescriptorSetLayout>
 ) : KLoggable {
-    private var vkPipeline: Long
+    var vkPipeline: Long
     private var vkPipelineLayout: Long
     override val logger = logger()
 

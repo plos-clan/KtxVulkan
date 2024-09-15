@@ -12,13 +12,16 @@ class VertexFormat(val attributes: List<VertexAttribute>) {
 
     init {
         var currentOffset = 0
+        println(attributes)
         elements = buildList {
             attributes.forEachIndexed { index, vertexAttribute ->
                 add(VertexElement(index, vertexAttribute, currentOffset))
                 currentOffset += vertexAttribute.size
             }
         }
+        println(elements)
         size = currentOffset
+        println("size: $size")
     }
 
     context(MemoryStack)
@@ -54,15 +57,15 @@ enum class VertexAttribute(val format: Int, val size: Int, val dataType: DataTyp
     R32_SFLOAT(VK_FORMAT_R32_SFLOAT, 4, DataType.SFLOAT, 1),
     R32G32_SFLOAT(VK_FORMAT_R32G32_SFLOAT, 8, DataType.SFLOAT, 2),
     R32G32B32_SFLOAT(VK_FORMAT_R32G32B32_SFLOAT, 12, DataType.SFLOAT, 3),
-    R32G32B32A32_SFLOAT(VK_FORMAT_R32G32B32A32_SFLOAT, 12, DataType.SFLOAT, 4),
+    R32G32B32A32_SFLOAT(VK_FORMAT_R32G32B32A32_SFLOAT, 16, DataType.SFLOAT, 4),
     R32_SINT(VK_FORMAT_R32_SINT, 4, DataType.SINT, 1),
     R32G32_SINT(VK_FORMAT_R32G32_SINT, 8, DataType.SINT, 2),
     R32G32B32_SINT(VK_FORMAT_R32G32B32_SINT, 12, DataType.SINT, 3),
-    R32G32B32A32_SINT(VK_FORMAT_R32G32B32A32_SINT, 12, DataType.SFLOAT, 4),
+    R32G32B32A32_SINT(VK_FORMAT_R32G32B32A32_SINT, 16, DataType.SFLOAT, 4),
     R32_UINT(VK_FORMAT_R32_UINT, 4, DataType.UINT, 1),
     R32G32_UINT(VK_FORMAT_R32G32_UINT, 8, DataType.UINT, 2),
     R32G32B32_UINT(VK_FORMAT_R32G32B32_UINT, 12, DataType.UINT, 3),
-    R32G32B32A32_UINT(VK_FORMAT_R32G32B32A32_UINT, 12, DataType.SFLOAT, 4)
+    R32G32B32A32_UINT(VK_FORMAT_R32G32B32A32_UINT, 16, DataType.SFLOAT, 4)
 }
 
 enum class DataType {
