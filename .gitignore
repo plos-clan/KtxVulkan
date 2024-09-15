@@ -27,3 +27,4 @@ replay_pid*
 /.idea
 /.kotlin
 /build
+build/

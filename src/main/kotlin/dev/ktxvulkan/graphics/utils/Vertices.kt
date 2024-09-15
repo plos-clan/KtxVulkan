@@ -7,21 +7,18 @@ import org.lwjgl.vulkan.VkVertexInputAttributeDescription
 import org.lwjgl.vulkan.VkVertexInputBindingDescription
 
 class VertexFormat(val attributes: List<VertexAttribute>) {
-    val size: Int
     val elements: List<VertexElement>
+    val size: Int
 
     init {
         var currentOffset = 0
-        println(attributes)
         elements = buildList {
             attributes.forEachIndexed { index, vertexAttribute ->
                 add(VertexElement(index, vertexAttribute, currentOffset))
                 currentOffset += vertexAttribute.size
             }
         }
-        println(elements)
         size = currentOffset
-        println("size: $size")
     }
 
     context(MemoryStack)
@@ -48,6 +45,10 @@ class VertexFormat(val attributes: List<VertexAttribute>) {
                         .offset(vertexElement.offset)
                 }
             }
+    }
+
+    override fun toString(): String {
+        return "VertexFormat(attributes=$attributes, elements=$elements, size=$size)"
     }
 
     data class VertexElement(val location: Int, val attribute: VertexAttribute, val offset: Int)

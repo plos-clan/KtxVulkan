@@ -8,6 +8,7 @@ import dev.ktxvulkan.graphics.vk.*
 import dev.ktxvulkan.graphics.vk.buffer.PMVertexBuffer
 import dev.ktxvulkan.graphics.vk.comand.CommandPool
 import dev.ktxvulkan.graphics.vk.pipeline.*
+import dev.ktxvulkan.utils.math.Vec4f
 import io.github.oshai.kotlinlogging.KLoggable
 import org.lwjgl.glfw.GLFW.glfwPollEvents
 import org.lwjgl.system.MemoryStack
@@ -33,6 +34,10 @@ object RenderEngine : KLoggable {
     var imageAvailableSemaphore: Long = 0
     var renderFinishedSemaphore: Long = 0
     var inFlightFence: Long = 0
+
+    var clearColor = Vec4f(0f, 0f, 0f, 1f)
+    var clearDepth = 1.0f
+    var clearStencil = 0f
 
     fun initialize() {
         window = Window()
@@ -96,12 +101,12 @@ object RenderEngine : KLoggable {
                     depthWriteEnable = true,
                     depthCompareOp = CompareOp.COMPARE_OP_LESS,
                     depthBoundsTestEnable = false,
-                    stencilTestEnable = false
+                    stencilTestEnable = true
                 ),
                 ColorBlendState(
                     logicOpEnable = false,
                     logicOp = LogicOp.LOGIC_OP_COPY,
-                    colorAttachments = listOf(ColorBlendAttachmentState(blendEnable = false)),
+                    colorAttachments = listOf(ColorBlendAttachmentState(blendEnable = false))
                 ),
                 setOf(
                     DynamicState.DYNAMIC_STATE_VIEWPORT,
@@ -110,7 +115,7 @@ object RenderEngine : KLoggable {
             ),
             listOf(descriptorSetLayout)
         )
-        vertexBuffer = PMVertexBuffer(pipeline)
+        vertexBuffer = PMVertexBuffer(device)
         createSyncObjects()
     }
 
@@ -151,10 +156,7 @@ object RenderEngine : KLoggable {
                 }
             val clearValues = VkClearValue.calloc(2, stack)
             clearValues[0].color {
-                it.float32(0, 0f)
-                    .float32(2, 0f)
-                    .float32(2, 0f)
-                    .float32(3, 1f)
+                clearColor.apply(it)
             }
             clearValues[1].depthStencil {
                 it.depth(1.0f).stencil(0)
@@ -241,10 +243,9 @@ object RenderEngine : KLoggable {
                     vkQueuePresentKHR(device.presentQueue, presentInfo)
                 }
             }
-//            window.swapBuffer()
         }
 
-        vkDeviceWaitIdle(device.vkDevice)
+        device.waitIdle()
     }
 
     fun cleanup() {

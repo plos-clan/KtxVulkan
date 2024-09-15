@@ -111,13 +111,8 @@ class Swapchain(val device: Device, val window: Window) : KLoggable {
             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
         )
         depthImage.createImageView(VK_IMAGE_ASPECT_DEPTH_BIT, 1)
-//        transitionImageLayout(depthImage, depthFormat, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, 1)
 
         framebuffers = createFramebuffers()
-    }
-
-    private fun transitionImageLayout(image: Image, format: Int, oldLayout: Int, newLayout: Int, mipLevels: Int) {
-
     }
 
     private fun findSupportedFormat(candidates: List<Int>, tiling: Int, features: Int): Int {
@@ -222,5 +217,9 @@ class Swapchain(val device: Device, val window: Window) : KLoggable {
         swapchainImages.forEach { it.destroy(destroyImage = false) }
         vkDestroySwapchainKHR(device.vkDevice, vkSwapchain, null)
         vkDestroySurfaceKHR(device.physicalDevice.instance.vkInstance, window.surface, null)
+    }
+
+    override fun toString(): String {
+        return "Swapchain(device=$device, window=$window, vkSwapchain=$vkSwapchain, swapchainImages=$swapchainImages, swapchainImageFormat=$swapchainImageFormat, swapchainExtent=$swapchainExtent, renderPass=$renderPass, framebuffers=$framebuffers, colorImage=$colorImage, depthImage=$depthImage)"
     }
 }

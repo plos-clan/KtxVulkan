@@ -74,6 +74,10 @@ class Device(val physicalDevice: PhysicalDevice) : KLoggable {
         }
     }
 
+    fun waitIdle() {
+        vkDeviceWaitIdle(vkDevice)
+    }
+
     fun destroy() {
         vkDestroyDevice(vkDevice, null)
     }

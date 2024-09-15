@@ -88,6 +88,7 @@ class GraphicsPipeline(
                 logger.info("successfully created graphics pipeline")
             }
         }
+        logger.info("Created $this")
     }
 
     fun destroy() {
@@ -95,6 +96,10 @@ class GraphicsPipeline(
         descriptorSetLayouts.forEach { it.destroy() }
         vkDestroyPipelineLayout(device.vkDevice, vkPipelineLayout, null)
         vkDestroyPipeline(device.vkDevice, vkPipeline, null)
+    }
+
+    override fun toString(): String {
+        return "GraphicsPipeline(swapchain=$swapchain, device=$device, shaderStages=$shaderStages, pipelineStates=$pipelineStates, descriptorSetLayouts=$descriptorSetLayouts, vkPipeline=$vkPipeline, vkPipelineLayout=$vkPipelineLayout)"
     }
 
     data class ShaderStage(val stage: Int, val shaderModule: ShaderModule)
