@@ -10,16 +10,18 @@ import dev.ktxvulkan.graphics.vk.comand.CommandPool
 import dev.ktxvulkan.graphics.vk.pipeline.*
 import dev.ktxvulkan.utils.math.Vec4f
 import io.github.oshai.kotlinlogging.KLoggable
-import org.lwjgl.glfw.GLFW.glfwPollEvents
+import org.lwjgl.glfw.GLFW.*
 import org.lwjgl.system.MemoryStack
 import org.lwjgl.util.shaderc.Shaderc.shaderc_glsl_fragment_shader
 import org.lwjgl.util.shaderc.Shaderc.shaderc_glsl_vertex_shader
 import org.lwjgl.vulkan.*
 import org.lwjgl.vulkan.KHRSwapchain.*
 import org.lwjgl.vulkan.VK10.*
+import org.lwjgl.vulkan.VK13.*
 
 
 object RenderEngine : KLoggable {
+    private var ended: Boolean = false
     override val logger = logger()
 
     lateinit var window: Window
@@ -37,7 +39,8 @@ object RenderEngine : KLoggable {
 
     var clearColor = Vec4f(0f, 0f, 0f, 1f)
     var clearDepth = 1.0f
-    var clearStencil = 0f
+    var clearStencil = 0
+    val stencilOpState = StencilOpState()
 
     fun initialize() {
         window = Window()
@@ -110,7 +113,12 @@ object RenderEngine : KLoggable {
                 ),
                 setOf(
                     DynamicState.DYNAMIC_STATE_VIEWPORT,
-                    DynamicState.DYNAMIC_STATE_SCISSOR
+                    DynamicState.DYNAMIC_STATE_SCISSOR,
+                    DynamicState.DYNAMIC_STATE_STENCIL_OP,
+                    DynamicState.DYNAMIC_STATE_STENCIL_TEST_ENABLE,
+                    DynamicState.DYNAMIC_STATE_STENCIL_WRITE_MASK,
+                    DynamicState.DYNAMIC_STATE_STENCIL_COMPARE_MASK,
+                    DynamicState.DYNAMIC_STATE_PRIMITIVE_TOPOLOGY
                 )
             ),
             listOf(descriptorSetLayout)
@@ -159,7 +167,7 @@ object RenderEngine : KLoggable {
                 clearColor.apply(it)
             }
             clearValues[1].depthStencil {
-                it.depth(1.0f).stencil(0)
+                it.depth(clearDepth).stencil(clearStencil)
             }
             renderPassInfo.clearValueCount(2).pClearValues(clearValues)
 
@@ -180,12 +188,31 @@ object RenderEngine : KLoggable {
                 .extent(swapchain.swapchainExtent)
             vkCmdSetScissor(commandBuffer, 0, scissor)
 
+            vkCmdSetStencilTestEnable(commandBuffer, false)
+            vkCmdSetStencilOp(commandBuffer, 1, VK_STENCIL_OP_KEEP, VK_STENCIL_OP_KEEP, VK_STENCIL_OP_KEEP, VK_COMPARE_OP_NEVER)
+
             drawOp()
 
             vkCmdEndRenderPass(commandBuffer)
 
             vkCheckResult(vkEndCommandBuffer(commandBuffer), "failed to record command buffer!")
         }
+    }
+
+    private fun flushSwapchain() {
+        val widthBuf = IntArray(1)
+        val heightBuf = IntArray(1)
+        var width = 0
+        var height = 0
+        while (width == 0 || height == 0) {
+            glfwGetFramebufferSize(window.handle, widthBuf, heightBuf)
+            width = widthBuf[0]
+            height = heightBuf[0]
+            glfwWaitEvents()
+        }
+        device.waitIdle()
+        swapchain.destroy(surface = false)
+        swapchain = Swapchain(device, window)
     }
 
     fun run() {
@@ -196,23 +223,28 @@ object RenderEngine : KLoggable {
                 with(stack) {
                     val pFence = callocLong(1).put(0, inFlightFence)
                     vkWaitForFences(device.vkDevice, pFence, true, Long.MAX_VALUE)
-                    vkResetFences(device.vkDevice, pFence)
 
                     val imageIndexBuf = callocInt(1)
-                    vkAcquireNextImageKHR(
+                    val acquireResult = vkAcquireNextImageKHR(
                         device.vkDevice, swapchain.vkSwapchain,
                         Long.MAX_VALUE, imageAvailableSemaphore,
                         VK_NULL_HANDLE, imageIndexBuf
                     )
+                    if (acquireResult == VK_ERROR_OUT_OF_DATE_KHR || acquireResult == VK_SUBOPTIMAL_KHR) {
+                        flushSwapchain()
+                        return@use
+                    }
                     val imageIndex = imageIndexBuf[0]
+
+                    vkResetFences(device.vkDevice, pFence)
 
                     vkResetCommandBuffer(commandBuffer, 0)
                     recordCommandBuffer(imageIndex) {
                         vertexBuffer.apply {
-                            vertex(0f, -0.5f, 0f, 1f, 1f, 1f, 1f)
+                            vertex(0f, -0.5f, 0f, 1f, 0f, 0f, 1f)
                             vertex(0.5f, 0.5f, 0f, 0f, 1f, 0f, 1f)
                             vertex(-0.5f, 0.5f, 0f, 0f, 0f, 1f, 1f)
-                            draw(commandBuffer)
+                            draw(commandBuffer, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
                         }
                     }
 
@@ -240,15 +272,20 @@ object RenderEngine : KLoggable {
                         .pSwapchains(callocLong(1).put(0, swapchain.vkSwapchain))
                         .pImageIndices(callocInt(1).put(0, imageIndex))
 
-                    vkQueuePresentKHR(device.presentQueue, presentInfo)
+                    val result = vkQueuePresentKHR(device.presentQueue, presentInfo)
+                    if (result == VK_SUBOPTIMAL_KHR || result == VK_ERROR_OUT_OF_DATE_KHR) {
+                        flushSwapchain()
+                    } else ;/* vkCheckResult(result, "unexpected failure in vkQueuePresentKHR")*/
                 }
             }
         }
 
         device.waitIdle()
+        ended = true
     }
 
     fun cleanup() {
+        if (!ended) return
         vkDestroySemaphore(device.vkDevice, imageAvailableSemaphore, null)
         vkDestroySemaphore(device.vkDevice, renderFinishedSemaphore, null)
         vkDestroyFence(device.vkDevice, inFlightFence, null)

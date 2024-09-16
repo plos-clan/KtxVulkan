@@ -256,6 +256,7 @@ class PhysicalDevice(val instance: Instance, private val window: Window) : KLogg
             VK_KHR_SWAPCHAIN_EXTENSION_NAME,
             VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME,
             VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME,
+            "VK_KHR_synchronization2",
 //            VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
 //            VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME,
 //            VK_KHR_RAY_QUERY_EXTENSION_NAME,

@@ -209,14 +209,14 @@ class Swapchain(val device: Device, val window: Window) : KLoggable {
         return VK_PRESENT_MODE_FIFO_KHR
     }
 
-    fun destroy() {
-        framebuffers.forEach { it.destroy() }
+    fun destroy(surface: Boolean = true) {
         colorImage.destroy()
         depthImage.destroy()
+        framebuffers.forEach { it.destroy() }
         renderPass.destroy()
         swapchainImages.forEach { it.destroy(destroyImage = false) }
         vkDestroySwapchainKHR(device.vkDevice, vkSwapchain, null)
-        vkDestroySurfaceKHR(device.physicalDevice.instance.vkInstance, window.surface, null)
+        if (surface) vkDestroySurfaceKHR(device.physicalDevice.instance.vkInstance, window.surface, null)
     }
 
     override fun toString(): String {

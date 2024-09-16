@@ -4,6 +4,7 @@ import dev.ktxvulkan.graphics.vk.Device
 import dev.ktxvulkan.structs.Vertex
 import dev.ktxvulkan.structs.sizeof
 import org.lwjgl.vulkan.VK10.*
+import org.lwjgl.vulkan.VK13.vkCmdSetPrimitiveTopology
 import org.lwjgl.vulkan.VkCommandBuffer
 
 class PMVertexBuffer(
@@ -35,11 +36,11 @@ class PMVertexBuffer(
         vertices++
     }
 
-    fun draw(cmd: VkCommandBuffer) {
+    fun draw(cmd: VkCommandBuffer, topology: Int) {
         val vertexBuffers = longArrayOf(bufferHandle)
         val offsets = longArrayOf(0)
         vkCmdBindVertexBuffers(cmd, 0, vertexBuffers, offsets)
-        require(vertices % 3 == 0)
+        vkCmdSetPrimitiveTopology(cmd, topology)
         vkCmdDraw(cmd, vertices, 1, 0, 0)
         vertices = 0
         arr.pos = 0

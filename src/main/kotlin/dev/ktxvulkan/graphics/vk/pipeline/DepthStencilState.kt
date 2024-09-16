@@ -18,13 +18,13 @@ enum class StencilOp(val vkStencilOp: Int) {
 }
 
 data class StencilOpState(
-    val failOp: StencilOp = StencilOp.STENCIL_OP_KEEP,
-    val passOp: StencilOp = StencilOp.STENCIL_OP_KEEP,
-    val depthFailOp: StencilOp = StencilOp.STENCIL_OP_KEEP,
-    val compareOp: StencilOp = StencilOp.STENCIL_OP_KEEP,
-    val compareMask: Int = 0x7ffffff,
-    val writeMask: Int = 0x7ffffff,
-    val reference: Int = 0
+    var failOp: StencilOp = StencilOp.STENCIL_OP_KEEP,
+    var passOp: StencilOp = StencilOp.STENCIL_OP_KEEP,
+    var depthFailOp: StencilOp = StencilOp.STENCIL_OP_KEEP,
+    var compareOp: CompareOp = CompareOp.COMPARE_OP_NEVER,
+    var compareMask: Int = 0x7ffffff,
+    var writeMask: Int = 0x7ffffff,
+    var reference: Int = 0
 ) : PipelineState {
     override val dynamicStates = listOf<DynamicState>()
 
@@ -34,7 +34,7 @@ data class StencilOpState(
             .failOp(failOp.vkStencilOp)
             .passOp(passOp.vkStencilOp)
             .depthFailOp(depthFailOp.vkStencilOp)
-            .compareOp(compareOp.vkStencilOp)
+            .compareOp(compareOp.vkCompareOp)
             .compareMask(compareMask)
             .writeMask(writeMask)
             .reference(reference)
