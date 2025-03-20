@@ -1,7 +1,7 @@
 package dev.ktxvulkan.graphics.vk
 
 import dev.ktxvulkan.graphics.utils.OSType
-import dev.ktxvulkan.graphics.utils.getOS
+import dev.ktxvulkan.graphics.utils.Platform
 import dev.ktxvulkan.graphics.utils.vkCheckResult
 import io.github.oshai.kotlinlogging.KLoggable
 import org.lwjgl.PointerBuffer
@@ -68,7 +68,7 @@ class Instance(validate: Boolean) : KLoggable {
 
             val requiredExtensions: PointerBuffer
 
-            val usePortability = PORTABILITY_EXTENSION in instanceExtensions && getOS() == OSType.MACOS
+            val usePortability = PORTABILITY_EXTENSION in instanceExtensions && Platform.isMacOS
             if (supportsValidation) {
                 val vkDebugUtilsExtension = stack.UTF8(VK_EXT_DEBUG_UTILS_EXTENSION_NAME)
                 val numExtensions =

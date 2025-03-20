@@ -12,10 +12,10 @@ class DescriptorSetLayout(val device: Device, val bindings: List<DescriptorSetLa
     }
 
     companion object {
-        fun build(device: Device, builder: Builder.() -> Unit): DescriptorSetLayout {
+        fun build(deviceManager: DeviceManager, builder: Builder.() -> Unit): DescriptorSetLayout {
             val build = Builder()
             build.builder()
-            return build.build(device)
+            return build.build(deviceManager.device)
         }
     }
 

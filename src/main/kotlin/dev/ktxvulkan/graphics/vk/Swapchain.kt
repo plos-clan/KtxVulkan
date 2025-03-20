@@ -11,7 +11,7 @@ import org.lwjgl.vulkan.KHRSwapchain.*
 import org.lwjgl.vulkan.VK10.*
 
 
-class Swapchain(val device: Device, val window: Window) : KLoggable {
+class Swapchain(val deviceManager: DeviceManager, val window: Window) : KLoggable {
     override val logger = logger()
     val vkSwapchain: Long
     val swapchainImages: List<Image>
@@ -23,7 +23,7 @@ class Swapchain(val device: Device, val window: Window) : KLoggable {
     val depthImage: Image
 
     init {
-        val swapchainSupport = device.physicalDevice.swapchainSupport
+        val swapchainSupport = deviceManager.surfaceProperties
         val surfaceFormat = chooseSwapSurfaceFormat(swapchainSupport.formats)
         val presentMode = chooseSwapPresentMode(swapchainSupport.presentModes)
         val extent = chooseSwapExtent(swapchainSupport.capabilities)
@@ -57,7 +57,7 @@ class Swapchain(val device: Device, val window: Window) : KLoggable {
                 .clipped(true)
                 .oldSwapchain(0) // leave this null because we will not recreate the swapchain
 
-            val indices = device.physicalDevice.queueFamilyIndices
+            val indices = deviceManager.physicalDevice.queueFamilyIndices
             val queueFamilyIndices = stack.ints(indices.graphicsFamily, indices.presentFamily)
             if (indices.graphicsFamily != indices.presentFamily) {
                 logger.debug("swapchain is configured to concurrent image usage due to different queues")
@@ -75,38 +75,38 @@ class Swapchain(val device: Device, val window: Window) : KLoggable {
 
             val pVkSwapchain = stack.callocLong(1)
             val vkCreateSwapchainKHRResult =
-                vkCreateSwapchainKHR(device.vkDevice, vkSwapchainCreateInfoKHR, null, pVkSwapchain)
+                vkCreateSwapchainKHR(deviceManager.device.vkDevice, vkSwapchainCreateInfoKHR, null, pVkSwapchain)
             vkCheckResult(vkCreateSwapchainKHRResult, "failed to create swapchain")
             vkSwapchain = pVkSwapchain[0]
 
             logger.info("successfully created swapchain")
             val intBuffer = stack.callocInt(1)
-            vkGetSwapchainImagesKHR(device.vkDevice, vkSwapchain, intBuffer, null)
+            vkGetSwapchainImagesKHR(deviceManager.device.vkDevice, vkSwapchain, intBuffer, null)
             val swapchainImages = stack.mallocLong(intBuffer[0])
-            vkGetSwapchainImagesKHR(device.vkDevice, vkSwapchain, intBuffer, swapchainImages)
+            vkGetSwapchainImagesKHR(deviceManager.device.vkDevice, vkSwapchain, intBuffer, swapchainImages)
             swapchainImageFormat = surfaceFormat.format()
             swapchainExtent = extent
             this.swapchainImages = buildList {
                 for (i in 0..<intBuffer[0]) {
-                    add(Image(device, swapchainImages[i], swapchainImageFormat, swapchainExtent))
+                    add(Image(deviceManager.device, swapchainImages[i], swapchainImageFormat, swapchainExtent))
                 }
             }
         }
 
-        renderPass = RenderPass(device, this)
+        renderPass = RenderPass(deviceManager.device, this)
 
         createSwapchainImageViews()
 
-        colorImage = Image.create(device, extent.width(), extent.height(), 1,
-            device.physicalDevice.msaaSamples, swapchainImageFormat,
+        colorImage = Image.create(deviceManager.device, extent.width(), extent.height(), 1,
+            deviceManager.physicalDevice.msaaSamples, swapchainImageFormat,
             VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT or VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
         )
         colorImage.createImageView(VK_IMAGE_ASPECT_COLOR_BIT, 1)
 
         val depthFormat = findDepthFormat()
-        depthImage = Image.create(device, extent.width(), extent.height(), 1,
-            device.physicalDevice.msaaSamples, depthFormat,
+        depthImage = Image.create(deviceManager.device, extent.width(), extent.height(), 1,
+            deviceManager.physicalDevice.msaaSamples, depthFormat,
             VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
         )
@@ -119,7 +119,7 @@ class Swapchain(val device: Device, val window: Window) : KLoggable {
         MemoryStack.stackPush().use { stack ->
             for (format in candidates) {
                 val props = VkFormatProperties.calloc(stack)
-                vkGetPhysicalDeviceFormatProperties(device.physicalDevice.vkPhysicalDevice, format, props)
+                vkGetPhysicalDeviceFormatProperties(deviceManager.physicalDevice.vkPhysicalDevice, format, props)
 
                 if (tiling == VK_IMAGE_TILING_LINEAR && (props.linearTilingFeatures() and features) == features) {
                     return format
@@ -144,7 +144,7 @@ class Swapchain(val device: Device, val window: Window) : KLoggable {
         return buildList {
             swapchainImages.forEach { image ->
                 val attachments = listOf(colorImage.imageView, depthImage.imageView, image.imageView)
-                add(Framebuffer(device, attachments, renderPass, swapchainExtent))
+                add(Framebuffer(deviceManager.device, attachments, renderPass, swapchainExtent))
             }
         }
     }
@@ -215,11 +215,11 @@ class Swapchain(val device: Device, val window: Window) : KLoggable {
         framebuffers.forEach { it.destroy() }
         renderPass.destroy()
         swapchainImages.forEach { it.destroy(destroyImage = false) }
-        vkDestroySwapchainKHR(device.vkDevice, vkSwapchain, null)
-        if (surface) vkDestroySurfaceKHR(device.physicalDevice.instance.vkInstance, window.surface, null)
+        vkDestroySwapchainKHR(deviceManager.device.vkDevice, vkSwapchain, null)
+        if (surface) vkDestroySurfaceKHR(deviceManager.physicalDevice.instance.vkInstance, window.surface, null)
     }
 
     override fun toString(): String {
-        return "Swapchain(device=$device, window=$window, vkSwapchain=$vkSwapchain, swapchainImages=$swapchainImages, swapchainImageFormat=$swapchainImageFormat, swapchainExtent=$swapchainExtent, renderPass=$renderPass, framebuffers=$framebuffers, colorImage=$colorImage, depthImage=$depthImage)"
+        return "Swapchain(device=$deviceManager, window=$window, vkSwapchain=$vkSwapchain, swapchainImages=$swapchainImages, swapchainImageFormat=$swapchainImageFormat, swapchainExtent=$swapchainExtent, renderPass=$renderPass, framebuffers=$framebuffers, colorImage=$colorImage, depthImage=$depthImage)"
     }
 }

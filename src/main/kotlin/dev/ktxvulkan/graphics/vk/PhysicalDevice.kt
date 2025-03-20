@@ -1,29 +1,59 @@
 package dev.ktxvulkan.graphics.vk
 
 import dev.ktxvulkan.graphics.Window
+import dev.ktxvulkan.graphics.vk.DeviceManager.Companion.deviceExtensions
 import io.github.oshai.kotlinlogging.KLoggable
 import org.lwjgl.system.MemoryStack
-import org.lwjgl.vulkan.*
-import org.lwjgl.vulkan.EXTDescriptorIndexing.VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME
-import org.lwjgl.vulkan.KHRBufferDeviceAddress.VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME
-import org.lwjgl.vulkan.KHRDeferredHostOperations.VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME
-import org.lwjgl.vulkan.KHRPipelineLibrary.VK_KHR_PIPELINE_LIBRARY_EXTENSION_NAME
-import org.lwjgl.vulkan.KHRShaderFloatControls.VK_KHR_SHADER_FLOAT_CONTROLS_EXTENSION_NAME
-import org.lwjgl.vulkan.KHRSpirv14.VK_KHR_SPIRV_1_4_EXTENSION_NAME
-import org.lwjgl.vulkan.KHRSurface.*
-import org.lwjgl.vulkan.KHRSwapchain.VK_KHR_SWAPCHAIN_EXTENSION_NAME
-import org.lwjgl.vulkan.VK10.*
+import org.lwjgl.vulkan.KHRSurface.vkGetPhysicalDeviceSurfaceCapabilitiesKHR
+import org.lwjgl.vulkan.KHRSurface.vkGetPhysicalDeviceSurfaceFormatsKHR
+import org.lwjgl.vulkan.KHRSurface.vkGetPhysicalDeviceSurfacePresentModesKHR
+import org.lwjgl.vulkan.KHRSurface.vkGetPhysicalDeviceSurfaceSupportKHR
+import org.lwjgl.vulkan.VK10.VK_API_VERSION_MAJOR
+import org.lwjgl.vulkan.VK10.VK_API_VERSION_MINOR
+import org.lwjgl.vulkan.VK10.VK_API_VERSION_PATCH
+import org.lwjgl.vulkan.VK10.VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU
+import org.lwjgl.vulkan.VK10.VK_QUEUE_GRAPHICS_BIT
+import org.lwjgl.vulkan.VK10.VK_SAMPLE_COUNT_16_BIT
+import org.lwjgl.vulkan.VK10.VK_SAMPLE_COUNT_1_BIT
+import org.lwjgl.vulkan.VK10.VK_SAMPLE_COUNT_2_BIT
+import org.lwjgl.vulkan.VK10.VK_SAMPLE_COUNT_32_BIT
+import org.lwjgl.vulkan.VK10.VK_SAMPLE_COUNT_4_BIT
+import org.lwjgl.vulkan.VK10.VK_SAMPLE_COUNT_64_BIT
+import org.lwjgl.vulkan.VK10.VK_SAMPLE_COUNT_8_BIT
+import org.lwjgl.vulkan.VK10.vkEnumerateDeviceExtensionProperties
+import org.lwjgl.vulkan.VK10.vkEnumeratePhysicalDevices
+import org.lwjgl.vulkan.VK10.vkGetPhysicalDeviceFeatures
+import org.lwjgl.vulkan.VK10.vkGetPhysicalDeviceMemoryProperties
+import org.lwjgl.vulkan.VK10.vkGetPhysicalDeviceProperties
+import org.lwjgl.vulkan.VK10.vkGetPhysicalDeviceQueueFamilyProperties
+import org.lwjgl.vulkan.VK11.vkGetPhysicalDeviceFeatures2
+import org.lwjgl.vulkan.VK13.VK_API_VERSION_1_3
+import org.lwjgl.vulkan.VkExtensionProperties
+import org.lwjgl.vulkan.VkPhysicalDevice
+import org.lwjgl.vulkan.VkPhysicalDeviceFeatures
+import org.lwjgl.vulkan.VkPhysicalDeviceFeatures2
+import org.lwjgl.vulkan.VkPhysicalDeviceMemoryProperties
+import org.lwjgl.vulkan.VkPhysicalDeviceProperties
+import org.lwjgl.vulkan.VkPhysicalDeviceVulkan11Features
+import org.lwjgl.vulkan.VkPhysicalDeviceVulkan13Features
+import org.lwjgl.vulkan.VkQueueFamilyProperties
+import org.lwjgl.vulkan.VkSurfaceCapabilitiesKHR
+import org.lwjgl.vulkan.VkSurfaceFormatKHR
+import kotlin.use
 
-
-class PhysicalDevice(val instance: Instance, private val window: Window) : KLoggable {
+class PhysicalDevice(val instance: Instance, val window: Window) : KLoggable {
     override val logger = logger()
-    val swapchainSupport: SwapchainSupportDetails
-    val queueFamilyIndices: QueueFamilyIndices
     val vkPhysicalDevice: VkPhysicalDevice
-    private val vkPhysicalDeviceProperties: VkPhysicalDeviceProperties
-    private val vkPhysicalDeviceMemoryProperties: VkPhysicalDeviceMemoryProperties
+    val vkPhysicalDeviceProperties: VkPhysicalDeviceProperties
+    val vkPhysicalDeviceMemoryProperties: VkPhysicalDeviceMemoryProperties
+    val surfaceProperties: SurfaceProperties
+    val queueFamilyIndices: QueueFamilyIndices
     val vkQueueFamilyProperties: VkQueueFamilyProperties.Buffer
     val msaaSamples: Int
+
+    val vkPhysicalDeviceFeatures2: VkPhysicalDeviceFeatures2
+    val vkPhysicalDeviceVulkan11Features: VkPhysicalDeviceVulkan11Features
+    val vkPhysicalDeviceVulkan13Features: VkPhysicalDeviceVulkan13Features
 
     init {
         MemoryStack.stackPush().use { stack ->
@@ -53,7 +83,7 @@ class PhysicalDevice(val instance: Instance, private val window: Window) : KLogg
             if (score > 0) vkPhysicalDevice = maxSuitablePhysicalDevice
             else throw RuntimeException("failed to find a suitable GPU!")
 
-            swapchainSupport = querySwapChainSupport(vkPhysicalDevice)
+            surfaceProperties = querySwapChainSupport(vkPhysicalDevice)
             queueFamilyIndices = findQueueFamilies(vkPhysicalDevice)
 
             vkPhysicalDeviceProperties = VkPhysicalDeviceProperties.calloc()
@@ -69,6 +99,20 @@ class PhysicalDevice(val instance: Instance, private val window: Window) : KLogg
             vkGetPhysicalDeviceQueueFamilyProperties(vkPhysicalDevice, queueFamilyPropertiesCount, vkQueueFamilyProperties)
 
             msaaSamples = getMaxUsableMSAASamples()
+
+            vkPhysicalDeviceFeatures2 = VkPhysicalDeviceFeatures2.calloc()
+            vkPhysicalDeviceFeatures2.`sType$Default`()
+
+            vkPhysicalDeviceVulkan11Features = VkPhysicalDeviceVulkan11Features.malloc()
+            vkPhysicalDeviceVulkan11Features.`sType$Default`()
+            vkPhysicalDeviceFeatures2.pNext(this.vkPhysicalDeviceVulkan11Features)
+
+            // Vulkan 1.3
+            vkPhysicalDeviceVulkan13Features = VkPhysicalDeviceVulkan13Features.malloc()
+            vkPhysicalDeviceVulkan13Features.`sType$Default`()
+            vkPhysicalDeviceVulkan11Features.pNext(vkPhysicalDeviceVulkan13Features.address())
+
+            vkGetPhysicalDeviceFeatures2(this.vkPhysicalDevice, this.vkPhysicalDeviceFeatures2)
         }
     }
 
@@ -107,6 +151,8 @@ class PhysicalDevice(val instance: Instance, private val window: Window) : KLogg
             score = 0
 
         logger.debug("\t score: {}", score)
+
+        if (device.capabilities.apiVersion != VK_API_VERSION_1_3) return 0
 
         val indices = findQueueFamilies(device)
         if (!indices.isComplete()) {
@@ -171,7 +217,7 @@ class PhysicalDevice(val instance: Instance, private val window: Window) : KLogg
                 deviceFeatures.geometryShader() && deviceFeatures.samplerAnisotropy() && extensionsSupported && swapChainAdequate
     }
 
-    private fun querySwapChainSupport(device: VkPhysicalDevice): SwapchainSupportDetails {
+    private fun querySwapChainSupport(device: VkPhysicalDevice): SurfaceProperties {
         val capabilities = VkSurfaceCapabilitiesKHR.calloc()
         vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, window.surface, capabilities)
 
@@ -202,7 +248,7 @@ class PhysicalDevice(val instance: Instance, private val window: Window) : KLogg
             }
         } else emptyList()
 
-        return SwapchainSupportDetails(capabilities, formats, presentModes)
+        return SurfaceProperties(capabilities, formats, presentModes)
     }
 
     private fun findQueueFamilies(device: VkPhysicalDevice): QueueFamilyIndices {
@@ -236,34 +282,6 @@ class PhysicalDevice(val instance: Instance, private val window: Window) : KLogg
                 i++
             }
         }
-
-        
         return indices
-    }
-
-    data class SwapchainSupportDetails(
-        val capabilities: VkSurfaceCapabilitiesKHR,
-        val formats: List<VkSurfaceFormatKHR>,
-        val presentModes: List<Int>
-    )
-
-    data class QueueFamilyIndices(var graphicsFamily: Int = -1, var presentFamily: Int = -1) {
-        fun isComplete() = graphicsFamily != -1 && presentFamily != -1
-    }
-
-    companion object {
-        val deviceExtensions = listOf(
-            VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-            VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME,
-            VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME,
-            "VK_KHR_synchronization2",
-//            VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
-//            VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME,
-//            VK_KHR_RAY_QUERY_EXTENSION_NAME,
-            VK_KHR_PIPELINE_LIBRARY_EXTENSION_NAME,
-            VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
-            VK_KHR_SPIRV_1_4_EXTENSION_NAME,
-            VK_KHR_SHADER_FLOAT_CONTROLS_EXTENSION_NAME
-        )
     }
 }

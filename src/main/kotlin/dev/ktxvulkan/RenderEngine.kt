@@ -1,6 +1,7 @@
 package dev.ktxvulkan
 
 import dev.ktxvulkan.graphics.Window
+import dev.ktxvulkan.graphics.utils.Platform
 import dev.ktxvulkan.graphics.utils.VertexAttribute
 import dev.ktxvulkan.graphics.utils.VertexFormat
 import dev.ktxvulkan.graphics.utils.vkCheckResult
@@ -26,15 +27,13 @@ object RenderEngine : KLoggable {
 
     lateinit var window: Window
     lateinit var instance: Instance
-    lateinit var physicalDevice: PhysicalDevice
-    lateinit var device: Device
+    lateinit var deviceManager: DeviceManager
     lateinit var swapchain: Swapchain
     lateinit var pipeline: GraphicsPipeline
     lateinit var vertexBuffer: PMVertexBuffer
     lateinit var commandPool: CommandPool
-    lateinit var commandBuffer: VkCommandBuffer
     var imageAvailableSemaphore: Long = 0
-    var renderFinishedSemaphore: Long = 0
+//    var renderFinishedSemaphore: Long = 0
     var inFlightFence: Long = 0
 
     var clearColor = Vec4f(0f, 0f, 0f, 1f)
@@ -43,26 +42,25 @@ object RenderEngine : KLoggable {
     val stencilOpState = StencilOpState()
 
     fun initialize() {
+        Platform.init()
         window = Window()
         instance = Instance(true)
         window.createSurface(instance)
-        physicalDevice = PhysicalDevice(instance, window)
-        device = Device(physicalDevice)
-        commandPool = CommandPool(device)
-        commandBuffer = commandPool.primaryBuffer
-        swapchain = Swapchain(device, window)
+        deviceManager = DeviceManager(instance, window)
+        commandPool = CommandPool(deviceManager.device)
+        swapchain = Swapchain(deviceManager, window)
 
-        val descriptorSetLayout = DescriptorSetLayout.build(device) {
+        val descriptorSetLayout = DescriptorSetLayout.build(deviceManager) {
             uniformBuffer(stageFlags = VK_SHADER_STAGE_VERTEX_BIT)
             combinedImageSampler(stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT)
         }
         pipeline = GraphicsPipeline(
-            device, swapchain,
+            deviceManager.device, swapchain,
             listOf(
                 GraphicsPipeline.ShaderStage(
                     VK_SHADER_STAGE_VERTEX_BIT,
                     ShaderModule.cached(
-                        device,
+                        deviceManager.device,
                         "engine/shaders/shader.vert",
                         shaderc_glsl_vertex_shader
                     )
@@ -70,7 +68,7 @@ object RenderEngine : KLoggable {
                 GraphicsPipeline.ShaderStage(
                     VK_SHADER_STAGE_FRAGMENT_BIT,
                     ShaderModule.cached(
-                        device,
+                        deviceManager.device,
                         "engine/shaders/shader.frag",
                         shaderc_glsl_fragment_shader
                     )
@@ -95,7 +93,7 @@ object RenderEngine : KLoggable {
                     depthBiasEnable = false
                 ),
                 MultisamplingState(
-                    physicalDevice.msaaSamples,
+                    deviceManager.physicalDevice.msaaSamples,
                     sampleShadingEnable = false,
                     minSampleShading = 0.2f
                 ),
@@ -123,36 +121,30 @@ object RenderEngine : KLoggable {
             ),
             listOf(descriptorSetLayout)
         )
-        vertexBuffer = PMVertexBuffer(device)
+        vertexBuffer = PMVertexBuffer(deviceManager.device)
         createSyncObjects()
     }
 
     fun createSyncObjects() {
         MemoryStack.stackPush().use { stack ->
             val semaphoreInfo = VkSemaphoreCreateInfo.calloc(stack).sType(VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO)
+                .flags(VK_SEMAPHORE_TYPE_BINARY)
             val fenceInfo = VkFenceCreateInfo.calloc(stack).sType(VK_STRUCTURE_TYPE_FENCE_CREATE_INFO)
                 .flags(VK_FENCE_CREATE_SIGNALED_BIT)
 
             val buf = stack.callocLong(1)
-            vkCheckResult(vkCreateSemaphore(device.vkDevice, semaphoreInfo, null, buf), "failed to create semaphore")
+            vkCheckResult(vkCreateSemaphore(deviceManager.device.vkDevice, semaphoreInfo, null, buf), "failed to create semaphore")
             imageAvailableSemaphore = buf[0]
-            vkCheckResult(vkCreateSemaphore(device.vkDevice, semaphoreInfo, null, buf), "failed to create semaphore")
-            renderFinishedSemaphore = buf[0]
-            vkCheckResult(vkCreateFence(device.vkDevice, fenceInfo, null, buf), "failed to create fence")
-            inFlightFence = buf[0]
+//            vkCheckResult(vkCreateSemaphore(deviceManager.device.vkDevice, semaphoreInfo, null, buf), "failed to create semaphore")
+//            renderFinishedSemaphore = buf[0]
+//            vkCheckResult(vkCreateFence(deviceManager.device.vkDevice, fenceInfo, null, buf), "failed to create fence")
+//            inFlightFence = buf[0]
         }
     }
 
-    private fun recordCommandBuffer(imageIndex: Int, drawOp: () -> Unit) {
+    private fun recordCommandBuffer(commandBuffer: CommandPool.CommandBuffer, imageIndex: Int, drawOp: () -> Unit) {
         MemoryStack.stackPush().use { stack ->
-            val beginInfo = VkCommandBufferBeginInfo.calloc(stack)
-                .sType(VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO)
-                .pInheritanceInfo(null)
-
-            vkCheckResult(
-                vkBeginCommandBuffer(commandBuffer, beginInfo),
-                "failed to begin recording command buffer!"
-            )
+            commandBuffer.begin(stack)
 
             val renderPassInfo = VkRenderPassBeginInfo.calloc(stack)
                 .sType(VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO)
@@ -171,9 +163,9 @@ object RenderEngine : KLoggable {
             }
             renderPassInfo.clearValueCount(2).pClearValues(clearValues)
 
-            vkCmdBeginRenderPass(commandBuffer, renderPassInfo, VK_SUBPASS_CONTENTS_INLINE)
+            vkCmdBeginRenderPass(commandBuffer.handle, renderPassInfo, VK_SUBPASS_CONTENTS_INLINE)
 
-            vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.vkPipeline)
+            vkCmdBindPipeline(commandBuffer.handle, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.vkPipeline)
 
             val viewPort = VkViewport.calloc(1, stack)
             viewPort[0].x(0f).y(0f)
@@ -181,21 +173,19 @@ object RenderEngine : KLoggable {
                 .height(swapchain.swapchainExtent.height().toFloat())
                 .minDepth(0f)
                 .maxDepth(1f)
-            vkCmdSetViewport(commandBuffer, 0, viewPort)
+            vkCmdSetViewport(commandBuffer.handle, 0, viewPort)
 
             val scissor = VkRect2D.calloc(1, stack)
             scissor[0].offset { it.x(0).y(0) }
                 .extent(swapchain.swapchainExtent)
-            vkCmdSetScissor(commandBuffer, 0, scissor)
+            vkCmdSetScissor(commandBuffer.handle, 0, scissor)
 
-            vkCmdSetStencilTestEnable(commandBuffer, false)
-            vkCmdSetStencilOp(commandBuffer, 1, VK_STENCIL_OP_KEEP, VK_STENCIL_OP_KEEP, VK_STENCIL_OP_KEEP, VK_COMPARE_OP_NEVER)
+            vkCmdSetStencilTestEnable(commandBuffer.handle, false)
+            vkCmdSetStencilOp(commandBuffer.handle, 1, VK_STENCIL_OP_KEEP, VK_STENCIL_OP_KEEP, VK_STENCIL_OP_KEEP, VK_COMPARE_OP_NEVER)
 
             drawOp()
 
-            vkCmdEndRenderPass(commandBuffer)
-
-            vkCheckResult(vkEndCommandBuffer(commandBuffer), "failed to record command buffer!")
+            vkCmdEndRenderPass(commandBuffer.handle)
         }
     }
 
@@ -210,23 +200,21 @@ object RenderEngine : KLoggable {
             height = heightBuf[0]
             glfwWaitEvents()
         }
-        device.waitIdle()
+        deviceManager.device.waitIdle()
         swapchain.destroy(surface = false)
-        swapchain = Swapchain(device, window)
+        swapchain = Swapchain(deviceManager, window)
     }
 
+    @OptIn(ExperimentalStdlibApi::class)
     fun run() {
         while (!window.shouldClose()) {
             glfwPollEvents()
 
-            MemoryStack.stackPush().use { stack ->
-                with(stack) {
-                    val pFence = callocLong(1).put(0, inFlightFence)
-                    vkWaitForFences(device.vkDevice, pFence, true, Long.MAX_VALUE)
-
+            MemoryStack.stackPush().use { stack -> with(stack) {
+                    val commandBuffer = commandPool.getCommandBuffer(stack)
                     val imageIndexBuf = callocInt(1)
                     val acquireResult = vkAcquireNextImageKHR(
-                        device.vkDevice, swapchain.vkSwapchain,
+                        deviceManager.device.vkDevice, swapchain.vkSwapchain,
                         Long.MAX_VALUE, imageAvailableSemaphore,
                         VK_NULL_HANDLE, imageIndexBuf
                     )
@@ -236,66 +224,53 @@ object RenderEngine : KLoggable {
                     }
                     val imageIndex = imageIndexBuf[0]
 
-                    vkResetFences(device.vkDevice, pFence)
-
-                    vkResetCommandBuffer(commandBuffer, 0)
-                    recordCommandBuffer(imageIndex) {
+                    recordCommandBuffer(commandBuffer, imageIndex) {
                         vertexBuffer.apply {
                             vertex(0f, -0.5f, 0f, 1f, 0f, 0f, 1f)
                             vertex(0.5f, 0.5f, 0f, 0f, 1f, 0f, 1f)
                             vertex(-0.5f, 0.5f, 0f, 0f, 0f, 1f, 1f)
-                            draw(commandBuffer, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
+                            upload(commandBuffer, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
                         }
                     }
 
-                    val submitInfo = VkSubmitInfo.calloc(this)
-                        .sType(VK_STRUCTURE_TYPE_SUBMIT_INFO)
-
-                    val waitSemaphores = callocLong(1).put(0, imageAvailableSemaphore)
-                    val waitStages = callocInt(1).put(0, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT)
-
-                    submitInfo.waitSemaphoreCount(1)
-                        .pWaitSemaphores(waitSemaphores)
-                        .pWaitDstStageMask(waitStages)
-                        .pCommandBuffers(callocPointer(1).put(0, commandBuffer))
-
-                    val signalSemaphores = callocLong(1).put(0, renderFinishedSemaphore)
-
-                    submitInfo.pSignalSemaphores(signalSemaphores)
-
-                    vkCheckResult(vkQueueSubmit(device.graphicsQueue, submitInfo, inFlightFence), "failed to submit queue")
+                    inFlightFence = commandBuffer.submitCommands(stack, deviceManager.device.graphicsQueue, true) {
+                        pWaitSemaphores(longs(imageAvailableSemaphore)).waitSemaphoreCount(1)
+                        pWaitDstStageMask(ints(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT))
+                    }
 
                     val presentInfo = VkPresentInfoKHR.calloc(this)
                         .sType(VK_STRUCTURE_TYPE_PRESENT_INFO_KHR)
-                        .pWaitSemaphores(signalSemaphores)
+                        .pWaitSemaphores(longs(commandBuffer.semaphore))
                         .swapchainCount(1)
                         .pSwapchains(callocLong(1).put(0, swapchain.vkSwapchain))
                         .pImageIndices(callocInt(1).put(0, imageIndex))
 
-                    val result = vkQueuePresentKHR(device.presentQueue, presentInfo)
+                    val result = vkQueuePresentKHR(deviceManager.device.presentQueue, presentInfo)
                     if (result == VK_SUBOPTIMAL_KHR || result == VK_ERROR_OUT_OF_DATE_KHR) {
                         flushSwapchain()
                     } else ;/* vkCheckResult(result, "unexpected failure in vkQueuePresentKHR")*/
-                }
-            }
+                    val pFence = callocLong(1).put(0, inFlightFence)
+                    vkWaitForFences(deviceManager.device.vkDevice, pFence, true, Long.MAX_VALUE)
+//                    Thread.sleep(1000)
+                    commandBuffer.reset()
+            } }
         }
 
-        device.waitIdle()
+        deviceManager.device.waitIdle()
         ended = true
     }
 
     fun cleanup() {
         if (!ended) return
-        vkDestroySemaphore(device.vkDevice, imageAvailableSemaphore, null)
-        vkDestroySemaphore(device.vkDevice, renderFinishedSemaphore, null)
-        vkDestroyFence(device.vkDevice, inFlightFence, null)
+        vkDestroySemaphore(deviceManager.device.vkDevice, imageAvailableSemaphore, null)
+//        vkDestroySemaphore(deviceManager.device.vkDevice, renderFinishedSemaphore, null)
+//        vkDestroyFence(deviceManager.device.vkDevice, inFlightFence, null)
         commandPool.destroy()
         vertexBuffer.destroy()
         pipeline.destroy()
         swapchain.destroy()
         window.destroy()
-        device.destroy()
-        physicalDevice.destroy()
+        deviceManager.destroy()
         instance.destroy()
     }
 }
